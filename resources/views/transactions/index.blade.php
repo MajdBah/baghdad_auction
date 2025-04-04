@@ -7,7 +7,7 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="mb-0">إدارة العمليات المالية</h2>
         <div>
-            <a href="{{ route('transactions.transferForm') }}" class="btn btn-success me-2">
+            <a href="{{ route('transactions.transfer_form') }}" class="btn btn-success me-2">
                 <i class="bi bi-arrow-left-right"></i> تحويل بين الحسابات
             </a>
             <a href="{{ route('transactions.create') }}" class="btn btn-primary">
