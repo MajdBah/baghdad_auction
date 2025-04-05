@@ -380,7 +380,13 @@ class InvoiceController extends Controller
                 ->with('error', 'Cannot record payment for invoices that are fully paid or cancelled');
         }
 
-        return view('invoices.payment', compact('invoice'));
+        // Calculate the remaining amount
+        $remainingAmount = $invoice->balance;
+
+        // Get all active accounts for the dropdown
+        $accounts = Account::where('is_active', true)->orderBy('name')->get();
+
+        return view('invoices.payment', compact('invoice', 'remainingAmount', 'accounts'));
     }
 
     /**

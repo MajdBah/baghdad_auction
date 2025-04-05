@@ -18,7 +18,7 @@
                     <h5 class="mb-0">تفاصيل الدفعة</h5>
                 </div>
                 <div class="card-body">
-                    <form action="{{ route('invoices.make_payment', $invoice) }}" method="POST" id="paymentForm">
+                    <form action="{{ route('invoices.record_payment', $invoice) }}" method="POST" id="paymentForm">
                         @csrf
                         <div class="row mb-3">
                             <div class="col-md-6">
