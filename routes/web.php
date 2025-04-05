@@ -83,6 +83,11 @@ Route::middleware(['auth'])->group(function () {
     Route::get('invoices/{invoice}/email', [InvoiceController::class, 'sendEmail'])->name('invoices.email');
     Route::get('invoices/{invoice}/items', [InvoiceController::class, 'showItems'])->name('invoices.items');
 
+    // Auto Payment Routes
+    Route::get('payments/auto/{accountId?}', [App\Http\Controllers\PaymentController::class, 'showAutoPaymentForm'])->name('payments.auto.form');
+    Route::post('payments/auto', [App\Http\Controllers\PaymentController::class, 'processAutoPayment'])->name('payments.auto.process');
+    Route::get('payments/auto/invoices/{accountId}', [App\Http\Controllers\PaymentController::class, 'getUnpaidInvoices'])->name('payments.auto.get-invoices');
+
     // Report routes
     Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
     Route::get('reports/account-statement', [ReportController::class, 'accountStatement'])->name('reports.account_statement');
