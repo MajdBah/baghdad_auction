@@ -494,9 +494,8 @@ class InvoiceController extends Controller
     {
         $invoice->load(['account', 'items.car', 'createdBy']);
 
-        // Generate PDF (integration with a PDF library would be needed here)
-        // For demonstration purposes, we'll just return to the invoice view
-        return view('invoices.pdf', compact('invoice'));
+        // Use the print view template since it's already formatted for printing
+        return view('invoices.print', compact('invoice'));
     }
 
     /**
