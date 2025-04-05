@@ -401,6 +401,35 @@
             </div>
         </div>
 
+        <!-- سجل الدفعات -->
+        @if($invoice->payments->count() > 0)
+        <div class="payments-history" style="margin-top: 20px;">
+            <div class="panel-heading" style="margin-bottom: 10px; font-size: 16px; font-weight: bold;">سجل الدفعات</div>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                <thead>
+                    <tr style="background-color: #f0f0f0;">
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">التاريخ</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">رقم المعاملة</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">طريقة الدفع</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">المبلغ</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">ملاحظات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($invoice->payments->sortByDesc('transaction_date') as $payment)
+                    <tr>
+                        <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{{ $payment->transaction_date ? $payment->transaction_date->format('Y-m-d') : '-' }}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{{ $payment->transaction_number }}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{{ $payment->payment_method }}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{{ number_format($payment->amount, 2) }} $</td>
+                        <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{{ $payment->notes ?: '-' }}</td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+        @endif
+
         <!-- الملاحظات -->
         @if($invoice->notes)
             <div class="notes-section">

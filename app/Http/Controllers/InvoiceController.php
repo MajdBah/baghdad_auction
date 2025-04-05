@@ -438,6 +438,7 @@ class InvoiceController extends Controller
                 'description' => 'Payment for ' . $invoice->invoice_number,
                 'status' => 'completed',
                 'created_by' => Auth::id(),
+                'invoice_id' => $invoice->id, // إضافة رقم الفاتورة للربط بين المعاملة والفاتورة
             ]);
 
             // Update account balances

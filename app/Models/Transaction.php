@@ -16,6 +16,7 @@ class Transaction extends Model
         'from_account_id',
         'to_account_id',
         'car_id',
+        'invoice_id',
         'amount',
         'commission_amount',
         'with_commission',
@@ -60,6 +61,14 @@ class Transaction extends Model
     public function car()
     {
         return $this->belongsTo(Car::class);
+    }
+
+    /**
+     * Get the invoice associated with the transaction
+     */
+    public function invoice()
+    {
+        return $this->belongsTo(Invoice::class);
     }
 
     /**

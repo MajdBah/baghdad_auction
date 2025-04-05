@@ -272,31 +272,27 @@
                                 <tr>
                                     <th>التاريخ</th>
                                     <th>المبلغ</th>
-                                    <th>الطريقة</th>
-                                    <th>المرجع</th>
+                                    <th>النوع</th>
+                                    <th>الرقم المرجعي</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @forelse($invoice->payments as $payment)
                                     <tr>
-                                        <td>{{ $payment->payment_date }}</td>
+                                        <td>{{ $payment->transaction_date->format('Y-m-d') }}</td>
                                         <td>{{ number_format($payment->amount, 2) }} $</td>
                                         <td>
-                                            @if($payment->payment_method == 'cash')
-                                                <span class="badge bg-success">نقداً</span>
-                                            @elseif($payment->payment_method == 'bank_transfer')
-                                                <span class="badge bg-primary">تحويل بنكي</span>
-                                            @elseif($payment->payment_method == 'credit_card')
-                                                <span class="badge bg-info">بطاقة ائتمان</span>
-                                            @elseif($payment->payment_method == 'check')
-                                                <span class="badge bg-warning">شيك</span>
+                                            @if($payment->type == 'payment')
+                                                <span class="badge bg-success">دفع</span>
+                                            @elseif($payment->type == 'refund')
+                                                <span class="badge bg-warning">مرتجع</span>
                                             @else
-                                                <span class="badge bg-secondary">{{ $payment->payment_method }}</span>
+                                                <span class="badge bg-secondary">{{ $payment->type }}</span>
                                             @endif
                                         </td>
                                         <td>
-                                            <a href="{{ route('transactions.show', $payment->transaction) }}">
-                                                {{ $payment->transaction->transaction_number }}
+                                            <a href="{{ route('transactions.show', $payment->id) }}">
+                                                {{ $payment->transaction_number }}
                                             </a>
                                         </td>
                                     </tr>
