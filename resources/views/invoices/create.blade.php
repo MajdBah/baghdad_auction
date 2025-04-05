@@ -130,31 +130,32 @@
                                 </thead>
                                 <tbody id="itemsContainer">
                                     <!-- سيتم إضافة البنود هنا -->
+                                    <!-- Plantilla oculta - no se envía al servidor -->
                                     <tr class="item-row" id="item-row-template" style="display: none;">
                                         <td>
-                                            <input type="text" class="form-control item-description" name="items[0][description]" placeholder="وصف البند" required>
+                                            <input type="text" class="form-control item-description" name="_template_items[0][description]" placeholder="وصف البند" disabled>
                                         </td>
                                         <td>
-                                            <input type="number" min="1" step="1" class="form-control item-quantity" name="items[0][quantity]" placeholder="الكمية" value="1" required>
+                                            <input type="number" min="1" step="1" class="form-control item-quantity" name="_template_items[0][quantity]" placeholder="الكمية" value="1" disabled>
                                         </td>
                                         <td>
                                             <div class="input-group">
-                                                <input type="number" min="0" step="0.01" class="form-control item-price" name="items[0][unit_price]" placeholder="السعر" value="0.00" required>
+                                                <input type="number" min="0" step="0.01" class="form-control item-price" name="_template_items[0][unit_price]" placeholder="السعر" value="0.00" disabled>
                                                 <span class="input-group-text">$</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div class="input-group">
-                                                <input type="text" class="form-control item-total" readonly value="0.00">
+                                                <input type="text" class="form-control item-total" readonly value="0.00" disabled>
                                                 <span class="input-group-text">$</span>
                                             </div>
                                         </td>
                                         <td>
-                                            <button type="button" class="btn btn-danger btn-sm remove-item-btn">
+                                            <button type="button" class="btn btn-danger btn-sm remove-item-btn" disabled>
                                                 <i class="bi bi-trash"></i>
                                             </button>
                                         </td>
-                                        <input type="hidden" name="items[0][item_type]" value="standard">
+                                        <input type="hidden" name="_template_items[0][item_type]" value="standard" disabled>
                                     </tr>
                                 </tbody>
                             </table>
@@ -271,161 +272,168 @@
 
 @push('scripts')
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        let itemCounter = 0;
-        const itemTemplate = document.getElementById('item-row-template');
-        const itemsContainer = document.getElementById('itemsContainer');
-        const addItemBtn = document.getElementById('addItemBtn');
-        const subtotalElement = document.getElementById('subtotal');
-        const grandTotalElement = document.getElementById('grandTotal');
-        const totalAmountInput = document.getElementById('total_amount');
-        const discountInput = document.getElementById('discount');
-        const taxInput = document.getElementById('tax');
-        const shippingFeeInput = document.getElementById('shipping_fee');
-        const noItemsAlert = document.getElementById('noItemsAlert');
-        const invoiceForm = document.getElementById('invoiceForm');
-        const issueDateInput = document.getElementById('issue_date');
-        const dueDateInput = document.getElementById('due_date');
+    $(document).ready(function() {
+        console.log('تم تحميل سكريبت الفاتورة - نسخة جديدة');
 
-        // إضافة بند جديد
+        // تعريف المتغيرات
+        let itemCounter = -1; // Iniciar desde -1 para que el primer ítem sea 0
+
+        // إضافة أول بند عند تحميل الصفحة
+        addNewItem();
+
+        // دالة إضافة بند جديد
         function addNewItem() {
             itemCounter++;
-            console.log("إضافة عنصر جديد #" + itemCounter);
+            console.log('إضافة بند جديد: ' + itemCounter);
 
-            // نسخ قالب البند
-            const newRow = itemTemplate.cloneNode(true);
-            newRow.style.display = 'table-row';
-            newRow.id = `item-row-${itemCounter}`;
+            const newRow = $('<tr>', {
+                class: 'item-row',
+                id: 'item-row-' + itemCounter
+            });
 
-            // تحديث أسماء الحقول بالمؤشر الصحيح
-            newRow.querySelectorAll('input').forEach(input => {
-                const name = input.getAttribute('name');
-                if (name) {
-                    input.setAttribute('name', name.replace('[0]', `[${itemCounter}]`));
+            newRow.html(`
+                <td>
+                    <input type="text" class="form-control item-description" name="items[${itemCounter}][description]" placeholder="وصف البند" required>
+                </td>
+                <td>
+                    <input type="number" min="1" step="1" class="form-control item-quantity" name="items[${itemCounter}][quantity]" placeholder="الكمية" value="1" required>
+                </td>
+                <td>
+                    <div class="input-group">
+                        <input type="number" min="0" step="0.01" class="form-control item-price" name="items[${itemCounter}][unit_price]" placeholder="السعر" value="0.00" required>
+                        <span class="input-group-text">$</span>
+                    </div>
+                </td>
+                <td>
+                    <div class="input-group">
+                        <input type="text" class="form-control item-total" readonly value="0.00">
+                        <span class="input-group-text">$</span>
+                    </div>
+                </td>
+                <td>
+                    <button type="button" class="btn btn-danger btn-sm remove-item-btn">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+                <input type="hidden" name="items[${itemCounter}][item_type]" value="standard">
+            `);
+
+            // إضافة الصف للجدول
+            $('#itemsContainer').append(newRow);
+
+            // حذف الإشعار (إذا كان ظاهراً)
+            $('#noItemsAlert').hide();
+
+            // تحديث الإجمالي
+            updateInvoiceTotal();
+
+            // إضافة مستمعي الأحداث
+            attachEventsToRow(newRow);
+        }
+
+        // إضافة مستمعي الأحداث للصف
+        function attachEventsToRow(row) {
+            // تحديث إجمالي البند
+            $(row).find('.item-quantity, .item-price').on('input', function() {
+                updateRowTotal(row);
+            });
+
+            // حذف البند
+            $(row).find('.remove-item-btn').on('click', function() {
+                if ($('.item-row:visible').length > 1) {
+                    $(row).remove();
+                    updateInvoiceTotal();
+                } else {
+                    alert('يجب أن يكون هناك بند واحد على الأقل في الفاتورة');
                 }
             });
 
-            // إضافة مستمعات الأحداث للحقول
-            const quantityInput = newRow.querySelector('.item-quantity');
-            const priceInput = newRow.querySelector('.item-price');
-            const totalInput = newRow.querySelector('.item-total');
-
-            function updateItemTotal() {
-                const quantity = parseFloat(quantityInput.value) || 0;
-                const price = parseFloat(priceInput.value) || 0;
-                const total = quantity * price;
-                totalInput.value = total.toFixed(2);
-                updateInvoiceTotal();
-            }
-
-            quantityInput.addEventListener('input', updateItemTotal);
-            priceInput.addEventListener('input', updateItemTotal);
-
-            // إضافة مستمع حدث لزر الحذف
-            const removeBtn = newRow.querySelector('.remove-item-btn');
-            removeBtn.addEventListener('click', function() {
-                newRow.remove();
-                updateInvoiceTotal();
-                checkItemsCount();
-            });
-
-            // إضافة البند إلى الجدول
-            itemsContainer.appendChild(newRow);
-            checkItemsCount();
-
-            // تحديث الإجمالي
-            updateItemTotal();
-
-            return newRow;
+            // تحديث إجمالي البند أول مرة
+            updateRowTotal(row);
         }
 
-        // إضافة بند عند الضغط على زر الإضافة
-        addItemBtn.addEventListener('click', function() {
-            console.log("تم النقر على زر إضافة بند");
-            addNewItem();
-        });
+        // تحديث إجمالي البند
+        function updateRowTotal(row) {
+            const quantity = parseFloat($(row).find('.item-quantity').val()) || 0;
+            const price = parseFloat($(row).find('.item-price').val()) || 0;
+            const total = (quantity * price).toFixed(2);
+            $(row).find('.item-total').val(total);
+            updateInvoiceTotal();
+        }
 
         // تحديث إجمالي الفاتورة
         function updateInvoiceTotal() {
             let subtotal = 0;
 
-            // جمع إجماليات البنود
-            document.querySelectorAll('.item-total').forEach(input => {
-                if (input.closest('tr').style.display !== 'none') {
-                    subtotal += parseFloat(input.value) || 0;
-                }
+            // حساب المجموع الفرعي - only count visible rows
+            $('.item-row:visible .item-total').each(function() {
+                subtotal += parseFloat($(this).val()) || 0;
             });
 
-            const discount = parseFloat(discountInput.value) || 0;
-            const tax = parseFloat(taxInput.value) || 0;
-            const shippingFee = parseFloat(shippingFeeInput.value) || 0;
+            // الحصول على قيم الخصم والضريبة والشحن
+            const discount = parseFloat($('#discount').val()) || 0;
+            const tax = parseFloat($('#tax').val()) || 0;
+            const shipping = parseFloat($('#shipping_fee').val()) || 0;
 
-            // حساب الإجمالي النهائي
-            const grandTotal = subtotal - discount + tax + shippingFee;
+            // حساب الإجمالي
+            const grandTotal = subtotal - discount + tax + shipping;
 
             // تحديث العناصر
-            subtotalElement.textContent = subtotal.toFixed(2) + ' $';
-            grandTotalElement.textContent = grandTotal.toFixed(2) + ' $';
-            totalAmountInput.value = grandTotal.toFixed(2);
-
-            console.log("تم تحديث إجمالي الفاتورة: " + grandTotal.toFixed(2));
+            $('#subtotal').text(subtotal.toFixed(2) + ' $');
+            $('#grandTotal').text(grandTotal.toFixed(2) + ' $');
+            $('#total_amount').val(grandTotal.toFixed(2));
         }
 
-        // مستمعات الأحداث للعناصر التي تؤثر على الإجمالي
-        discountInput.addEventListener('input', updateInvoiceTotal);
-        taxInput.addEventListener('input', updateInvoiceTotal);
-        shippingFeeInput.addEventListener('input', updateInvoiceTotal);
+        // ربط مستمع حدث لزر إضافة البند
+        $('#addItemBtn').on('click', function() {
+            addNewItem();
+        });
 
-        // التحقق من وجود بنود
-        function checkItemsCount() {
-            const visibleItems = Array.from(itemsContainer.querySelectorAll('.item-row'))
-                .filter(row => row.style.display !== 'none' && row.id !== 'item-row-template');
+        // ربط مستمعي الأحداث للخصم والضريبة والشحن
+        $('#discount, #tax, #shipping_fee').on('input', updateInvoiceTotal);
 
-            console.log("عدد البنود المرئية: " + visibleItems.length);
-
-            if (visibleItems.length === 0) {
-                noItemsAlert.style.display = 'block';
-            } else {
-                noItemsAlert.style.display = 'none';
+        // تعيين تاريخ الاستحقاق تلقائياً (+30 يوم من تاريخ الفاتورة)
+        $('#issue_date').on('change', function() {
+            const issueDate = new Date($(this).val());
+            if (!isNaN(issueDate.getTime())) {
+                const dueDate = new Date(issueDate);
+                dueDate.setDate(dueDate.getDate() + 30);
+                const dueDateString = dueDate.toISOString().split('T')[0];
+                $('#due_date').val(dueDateString);
             }
-        }
+        });
 
-        // التحقق قبل إرسال النموذج
-        invoiceForm.addEventListener('submit', function(e) {
-            const visibleItems = Array.from(itemsContainer.querySelectorAll('.item-row'))
-                .filter(row => row.style.display !== 'none' && row.id !== 'item-row-template');
+        // تحديث تاريخ الاستحقاق عند تحميل الصفحة
+        $('#issue_date').trigger('change');
 
-            if (visibleItems.length === 0) {
-                e.preventDefault();
-                noItemsAlert.style.display = 'block';
-                window.scrollTo(0, noItemsAlert.offsetTop - 100);
-                console.log("تم إلغاء الإرسال: لا توجد بنود");
+        // التحقق من صحة النموذج قبل الإرسال
+        $('#invoiceForm').on('submit', function(e) {
+            e.preventDefault(); // منع الإرسال التلقائي للنموذج
+
+            // التحقق من وجود عنصر واحد على الأقل في الفاتورة
+            if ($('.item-row:visible').length === 0) {
+                $('#noItemsAlert').show();
                 return false;
             }
 
-            console.log("تم إرسال النموذج بنجاح");
+            // التأكد من تعطيل قالب البند المخفي
+            $('#item-row-template').find('input, select').prop('disabled', true);
+
+            // إضافة سجل في وحدة التحكم لتتبع الأخطاء
+            console.log('تقديم نموذج الفاتورة - بدء العملية');
+
+            // إظهار مؤشر التحميل
+            const submitBtn = $(this).find('button[type="submit"]');
+            const originalBtnText = submitBtn.html();
+            submitBtn.html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> جاري الحفظ...');
+            submitBtn.prop('disabled', true);
+
+            // إرسال النموذج مباشرة بدون AJAX
+            this.submit();
+
+            // إذا وصلنا إلى هنا، فقد تم إرسال النموذج بنجاح
+            return true;
         });
-
-        // تحديد تاريخ الاستحقاق الافتراضي (+30 يوم من تاريخ الفاتورة)
-        function updateDueDate() {
-            const invoiceDate = new Date(issueDateInput.value);
-            if (!isNaN(invoiceDate.getTime())) {
-                const dueDate = new Date(invoiceDate);
-                dueDate.setDate(dueDate.getDate() + 30);
-                dueDateInput.value = dueDate.toISOString().split('T')[0];
-                console.log("تم تحديث تاريخ الاستحقاق: " + dueDateInput.value);
-            }
-        }
-
-        if (!dueDateInput.value) {
-            updateDueDate();
-        }
-
-        issueDateInput.addEventListener('change', updateDueDate);
-
-        // إضافة بند افتراضي عند تحميل الصفحة
-        console.log("تحميل الصفحة - إضافة بند افتراضي");
-        addNewItem();
     });
 </script>
 @endpush

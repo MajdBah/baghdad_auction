@@ -221,6 +221,19 @@ class TransactionController extends Controller
     }
 
     /**
+     * Show the form for processing a transaction
+     */
+    public function showProcessForm(Transaction $transaction)
+    {
+        if ($transaction->status !== 'pending') {
+            return redirect()->route('transactions.show', $transaction)
+                ->with('error', 'Only pending transactions can be processed');
+        }
+
+        return view('transactions.process', compact('transaction'));
+    }
+
+    /**
      * Process a transaction (change status to completed)
      */
     public function process(Transaction $transaction)
@@ -245,6 +258,19 @@ class TransactionController extends Controller
             DB::rollback();
             return back()->with('error', 'Failed to process transaction: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Show the form for cancelling a transaction
+     */
+    public function showCancelForm(Transaction $transaction)
+    {
+        if ($transaction->status !== 'pending') {
+            return redirect()->route('transactions.show', $transaction)
+                ->with('error', 'Only pending transactions can be cancelled');
+        }
+
+        return view('transactions.cancel', compact('transaction'));
     }
 
     /**

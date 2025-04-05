@@ -56,8 +56,10 @@ Route::middleware(['auth'])->group(function () {
 
     // Transaction routes
     Route::resource('transactions', TransactionController::class);
-    Route::get('transactions/{transaction}/process', [TransactionController::class, 'process'])->name('transactions.process');
-    Route::get('transactions/{transaction}/cancel', [TransactionController::class, 'cancel'])->name('transactions.cancel');
+    Route::get('transactions/{transaction}/process', [TransactionController::class, 'showProcessForm'])->name('transactions.process');
+    Route::patch('transactions/{transaction}/process', [TransactionController::class, 'process'])->name('transactions.do_process');
+    Route::get('transactions/{transaction}/cancel', [TransactionController::class, 'showCancelForm'])->name('transactions.cancel');
+    Route::patch('transactions/{transaction}/cancel', [TransactionController::class, 'cancel'])->name('transactions.do_cancel');
     Route::get('transfer', [TransactionController::class, 'transferForm'])->name('transactions.transfer_form');
     Route::post('transfer', [TransactionController::class, 'transfer'])->name('transactions.transfer');
 
@@ -78,6 +80,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])->name('invoices.cancel');
     Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'generatePdf'])->name('invoices.pdf');
     Route::get('invoices/{invoice}/email', [InvoiceController::class, 'sendEmail'])->name('invoices.email');
+    Route::get('invoices/{invoice}/items', [InvoiceController::class, 'showItems'])->name('invoices.items');
 
     // Report routes
     Route::get('reports', [ReportController::class, 'index'])->name('reports.index');

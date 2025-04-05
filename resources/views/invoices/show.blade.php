@@ -160,7 +160,7 @@
                                             <td>{{ $index + 1 }}</td>
                                             <td>{{ $item->description }}</td>
                                             <td class="text-center">{{ $item->quantity }}</td>
-                                            <td class="text-end">{{ number_format($item->price, 2) }} $</td>
+                                            <td class="text-end">{{ number_format($item->unit_price, 2) }} $</td>
                                             <td class="text-end">{{ number_format($item->total, 2) }} $</td>
                                         </tr>
                                     @endforeach

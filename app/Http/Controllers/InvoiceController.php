@@ -74,7 +74,7 @@ class InvoiceController extends Controller
         DB::beginTransaction();
 
         try {
-            // حساب إجماليات الفاتورة
+            // Calculate invoice totals
             $subtotal = 0;
             foreach ($request->items as $item) {
                 $subtotal += ($item['quantity'] * $item['unit_price']);
@@ -85,11 +85,11 @@ class InvoiceController extends Controller
             $shippingFee = $request->shipping_fee ?? 0;
             $totalAmount = $subtotal - $discount + $tax + $shippingFee;
 
-            // إنشاء رقم الفاتورة
+            // Create invoice number
             $prefix = $request->type === 'invoice' ? 'INV' : 'BILL';
             $invoiceNumber = $prefix . '-' . date('Ymd') . '-' . strtoupper(Str::random(4));
 
-            // إنشاء الفاتورة
+            // Create the invoice
             $invoice = Invoice::create([
                 'invoice_number' => $invoiceNumber,
                 'type' => $request->type,
@@ -109,37 +109,51 @@ class InvoiceController extends Controller
                 'created_by' => Auth::id(),
             ]);
 
-            // إنشاء بنود الفاتورة
+            // Create invoice items
             foreach ($request->items as $item) {
                 $itemTotal = $item['quantity'] * $item['unit_price'];
+
+                // Only assign car_id if the item_type is related to a car service
+                $carId = null;
+                if (isset($item['item_type']) && in_array($item['item_type'], ['car_service', 'car_part', 'car_repair']) && $request->car_id) {
+                    $carId = $request->car_id;
+                }
+
                 InvoiceItem::create([
                     'invoice_id' => $invoice->id,
-                    'car_id' => $request->car_id, // استخدام السيارة المرتبطة بالفاتورة
+                    'car_id' => $carId,
                     'description' => $item['description'],
                     'quantity' => $item['quantity'],
                     'unit_price' => $item['unit_price'],
                     'total' => $itemTotal,
-                    'item_type' => $item['item_type'],
+                    'item_type' => isset($item['item_type']) ? $item['item_type'] : 'general',
                 ]);
             }
 
-            // إنشاء معاملة مالية إذا تم اختيار ذلك وكانت حالة الفاتورة "مصدرة"
+            // Create a transaction if selected and invoice is issued
             if ($request->has('create_transaction') && $request->status === 'issued') {
                 $transactionNumber = 'TRX-' . strtoupper(Str::random(8));
 
-                // تحديد اتجاه المعاملة بناءً على نوع الفاتورة
+                // Find intermediary account
+                $intermediaryAccount = Account::where('type', 'intermediary')->first();
+
+                if (!$intermediaryAccount) {
+                    throw new \Exception('حساب وسيط غير موجود. يرجى إنشاء حساب وسيط قبل إنشاء فواتير مع معاملات تلقائية.');
+                }
+
+                // Determine transaction direction based on invoice type
                 if ($request->type === 'invoice') {
-                    // فاتورة بيع: من الزبون إلى الوسيط
+                    // Sales invoice: from customer to intermediary
                     $fromAccountId = $request->account_id;
-                    $toAccountId = Account::where('type', 'intermediary')->first()->id;
+                    $toAccountId = $intermediaryAccount->id;
                 } else {
-                    // فاتورة شراء: من الوسيط إلى المورد
-                    $fromAccountId = Account::where('type', 'intermediary')->first()->id;
+                    // Purchase invoice: from intermediary to supplier
+                    $fromAccountId = $intermediaryAccount->id;
                     $toAccountId = $request->account_id;
                 }
 
-                // إنشاء المعاملة
-                Transaction::create([
+                // Create the transaction
+                $transaction = Transaction::create([
                     'transaction_number' => $transactionNumber,
                     'type' => $request->type === 'invoice' ? 'sale' : 'purchase',
                     'from_account_id' => $fromAccountId,
@@ -154,6 +168,15 @@ class InvoiceController extends Controller
                     'status' => 'completed',
                     'created_by' => Auth::id(),
                 ]);
+
+                // Update account balances
+                $fromAccount = Account::findOrFail($fromAccountId);
+                $fromAccount->balance -= $totalAmount;
+                $fromAccount->save();
+
+                $toAccount = Account::findOrFail($toAccountId);
+                $toAccount->balance += $totalAmount;
+                $toAccount->save();
             }
 
             DB::commit();
@@ -162,6 +185,8 @@ class InvoiceController extends Controller
                 ->with('success', ($request->type === 'invoice' ? 'فاتورة البيع' : 'فاتورة الشراء') . ' تم إنشاؤها بنجاح');
         } catch (\Exception $e) {
             DB::rollback();
+            \Log::error('Invoice creation error: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
             return back()->with('error', 'فشل في إنشاء الفاتورة: ' . $e->getMessage())->withInput();
         }
     }
@@ -210,6 +235,8 @@ class InvoiceController extends Controller
             'issue_date' => 'required|date',
             'due_date' => 'required|date|after_or_equal:issue_date',
             'tax_rate' => 'nullable|numeric|min:0|max:100',
+            'discount' => 'nullable|numeric|min:0',
+            'shipping_fee' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
             'items' => 'required|array|min:1',
             'items.*.id' => 'nullable|exists:invoice_items,id',
@@ -225,6 +252,11 @@ class InvoiceController extends Controller
         DB::beginTransaction();
 
         try {
+            // Get values with proper defaults
+            $totalDiscount = $request->input('discount', 0) ?: 0;
+            $shippingFee = $request->input('shipping_fee', 0) ?: 0;
+            $invoiceTaxRate = $request->input('tax_rate', 0) ?: 0;
+
             // Calculate invoice totals
             $subtotal = 0;
             $taxAmount = 0;
@@ -242,45 +274,44 @@ class InvoiceController extends Controller
 
             // Update or create items
             foreach ($request->items as $item) {
-                $itemSubtotal = ($item['quantity'] * $item['unit_price']) - ($item['discount'] ?? 0);
-                $itemTaxRate = $item['tax_rate'] ?? $request->tax_rate ?? 0;
-                $itemTaxAmount = $itemSubtotal * ($itemTaxRate / 100);
-                $itemTotal = $itemSubtotal + $itemTaxAmount;
+                $itemSubtotal = ($item['quantity'] * $item['unit_price']);
+                $itemDiscount = isset($item['discount']) && is_numeric($item['discount']) ? $item['discount'] : 0;
+                $itemSubtotalAfterDiscount = $itemSubtotal - $itemDiscount;
+                $itemTaxRate = isset($item['tax_rate']) && is_numeric($item['tax_rate']) ? $item['tax_rate'] : $invoiceTaxRate;
+                $itemTaxAmount = $itemSubtotalAfterDiscount * ($itemTaxRate / 100);
+                $itemTotal = $itemSubtotalAfterDiscount + $itemTaxAmount;
 
                 $subtotal += $itemSubtotal;
                 $taxAmount += $itemTaxAmount;
                 $totalAmount += $itemTotal;
 
+                $itemData = [
+                    'car_id' => $item['car_id'] ?? null,
+                    'description' => $item['description'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                    'discount' => $itemDiscount,
+                    'tax_rate' => $itemTaxRate,
+                    'tax_amount' => $itemTaxAmount,
+                    'total' => $itemTotal,
+                    'item_type' => $item['item_type'],
+                ];
+
                 // Update or create the item
                 if (!empty($item['id'])) {
                     // Update existing item
-                    InvoiceItem::findOrFail($item['id'])->update([
-                        'car_id' => $item['car_id'] ?? null,
-                        'description' => $item['description'],
-                        'quantity' => $item['quantity'],
-                        'unit_price' => $item['unit_price'],
-                        'discount' => $item['discount'] ?? 0,
-                        'tax_rate' => $itemTaxRate,
-                        'tax_amount' => $itemTaxAmount,
-                        'total' => $itemTotal,
-                        'item_type' => $item['item_type'],
-                    ]);
+                    InvoiceItem::find($item['id'])?->update($itemData);
                 } else {
                     // Create new item
-                    InvoiceItem::create([
-                        'invoice_id' => $invoice->id,
-                        'car_id' => $item['car_id'] ?? null,
-                        'description' => $item['description'],
-                        'quantity' => $item['quantity'],
-                        'unit_price' => $item['unit_price'],
-                        'discount' => $item['discount'] ?? 0,
-                        'tax_rate' => $itemTaxRate,
-                        'tax_amount' => $itemTaxAmount,
-                        'total' => $itemTotal,
-                        'item_type' => $item['item_type'],
-                    ]);
+                    $itemData['invoice_id'] = $invoice->id;
+                    InvoiceItem::create($itemData);
                 }
             }
+
+            // Update final total amount with additional discount and shipping
+            $finalSubtotal = $subtotal - $totalDiscount;
+            $finalTotalAmount = $finalSubtotal + $taxAmount + $shippingFee;
+            $balance = $finalTotalAmount - ($invoice->paid_amount ?: 0);
 
             // Update invoice
             $invoice->update([
@@ -288,20 +319,22 @@ class InvoiceController extends Controller
                 'issue_date' => $request->issue_date,
                 'due_date' => $request->due_date,
                 'subtotal' => $subtotal,
-                'tax_rate' => $request->tax_rate ?? 0,
+                'discount' => $totalDiscount,
+                'tax_rate' => $invoiceTaxRate,
                 'tax_amount' => $taxAmount,
-                'total_amount' => $totalAmount,
-                'balance' => $totalAmount - $invoice->paid_amount,
+                'shipping_fee' => $shippingFee,
+                'total_amount' => $finalTotalAmount,
+                'balance' => $balance,
                 'notes' => $request->notes,
             ]);
 
             DB::commit();
 
             return redirect()->route('invoices.show', $invoice)
-                ->with('success', ($invoice->type === 'invoice' ? 'Invoice' : 'Bill') . ' updated successfully');
+                ->with('success', ($invoice->type === 'invoice' ? 'فاتورة البيع' : 'فاتورة الشراء') . ' تم تحديثها بنجاح');
         } catch (\Exception $e) {
             DB::rollback();
-            return back()->with('error', 'Failed to update ' . ($invoice->type === 'invoice' ? 'invoice' : 'bill') . ': ' . $e->getMessage())->withInput();
+            return back()->with('error', 'حدث خطأ أثناء حفظ الفاتورة. الرجاء المحاولة مرة أخرى. ' . $e->getMessage())->withInput();
         }
     }
 
@@ -468,5 +501,18 @@ class InvoiceController extends Controller
 
         return redirect()->route('invoices.show', $invoice)
             ->with('success', ($invoice->type === 'invoice' ? 'Invoice' : 'Bill') . ' sent via email successfully');
+    }
+
+    /**
+     * عرض البنود المرتبطة بفاتورة معينة (للتشخيص)
+     */
+    public function showItems(Invoice $invoice)
+    {
+        $invoice->load('items');
+        return response()->json([
+            'invoice_number' => $invoice->invoice_number,
+            'items_count' => $invoice->items->count(),
+            'items' => $invoice->items
+        ]);
     }
 }
