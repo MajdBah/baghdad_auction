@@ -23,10 +23,25 @@
                     <div class="card-body">
                         <div class="row mb-3">
                             <div class="col-md-6">
-                                <label for="account_id" class="form-label">الحساب <span class="text-danger">*</span></label>
+                                <label for="from_account_id" class="form-label">حساب المصدر <span class="text-danger">*</span></label>
+                                <select class="form-select @error('from_account_id') is-invalid @enderror"
+                                        id="from_account_id" name="from_account_id" required>
+                                    <option value="" selected disabled>-- اختر حساب المصدر --</option>
+                                    @foreach($accounts as $account)
+                                        <option value="{{ $account->id }}" {{ old('from_account_id') == $account->id ? 'selected' : '' }}>
+                                            {{ $account->name }} ({{ $account->account_number }})
+                                        </option>
+                                    @endforeach
+                                </select>
+                                @error('from_account_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="col-md-6">
+                                <label for="account_id" class="form-label">حساب الوجهة <span class="text-danger">*</span></label>
                                 <select class="form-select @error('account_id') is-invalid @enderror"
                                         id="account_id" name="account_id" required>
-                                    <option value="" selected disabled>-- اختر الحساب --</option>
+                                    <option value="" selected disabled>-- اختر حساب الوجهة --</option>
                                     @foreach($accounts as $account)
                                         <option value="{{ $account->id }}" {{ old('account_id', request('account_id')) == $account->id ? 'selected' : '' }}>
                                             {{ $account->name }} ({{ $account->account_number }})
@@ -34,14 +49,6 @@
                                     @endforeach
                                 </select>
                                 @error('account_id')
-                                    <div class="invalid-feedback">{{ $message }}</div>
-                                @enderror
-                            </div>
-                            <div class="col-md-6">
-                                <label for="issue_date" class="form-label">تاريخ الفاتورة <span class="text-danger">*</span></label>
-                                <input type="date" class="form-control @error('issue_date') is-invalid @enderror"
-                                       id="issue_date" name="issue_date" value="{{ old('issue_date', date('Y-m-d')) }}" required>
-                                @error('issue_date')
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
                             </div>
@@ -53,9 +60,12 @@
                                 <select class="form-select @error('type') is-invalid @enderror"
                                         id="type" name="type" required>
                                     <option value="" selected disabled>-- اختر النوع --</option>
-                                    <option value="invoice" {{ old('type') == 'invoice' ? 'selected' : '' }}>فاتورة بيع</option>
-                                    <option value="bill" {{ old('type') == 'bill' ? 'selected' : '' }}>فاتورة شراء</option>
+                                    <option value="invoice" {{ old('type') == 'invoice' ? 'selected' : '' }}>فاتورة بيع (INV)</option>
+                                    <option value="bill" {{ old('type') == 'bill' ? 'selected' : '' }}>فاتورة شراء (BILL)</option>
                                 </select>
+                                <small class="form-text text-muted">
+                                    فاتورة البيع (INV): دخل للحساب الوسيط | فاتورة الشراء (BILL): مصروف للحساب الوسيط
+                                </small>
                                 @error('type')
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
@@ -273,10 +283,10 @@
 @push('scripts')
 <script>
     $(document).ready(function() {
-        console.log('تم تحميل سكريبت الفاتورة - نسخة جديدة');
+        console.log('تم تحميل سكريبت الفاتورة - النسخة المحسّنة');
 
         // تعريف المتغيرات
-        let itemCounter = -1; // Iniciar desde -1 para que el primer ítem sea 0
+        let itemCounter = -1; // بدء من -1 ليكون أول عنصر هو 0
 
         // إضافة أول بند عند تحميل الصفحة
         addNewItem();
@@ -284,7 +294,7 @@
         // دالة إضافة بند جديد
         function addNewItem() {
             itemCounter++;
-            console.log('إضافة بند جديد: ' + itemCounter);
+            console.log('إضافة بند جديد برقم: ' + itemCounter);
 
             const newRow = $('<tr>', {
                 class: 'item-row',
@@ -365,7 +375,7 @@
         function updateInvoiceTotal() {
             let subtotal = 0;
 
-            // حساب المجموع الفرعي - only count visible rows
+            // حساب المجموع الفرعي - فقط الصفوف الظاهرة
             $('.item-row:visible .item-total').each(function() {
                 subtotal += parseFloat($(this).val()) || 0;
             });
@@ -392,35 +402,47 @@
         // ربط مستمعي الأحداث للخصم والضريبة والشحن
         $('#discount, #tax, #shipping_fee').on('input', updateInvoiceTotal);
 
-        // تعيين تاريخ الاستحقاق تلقائياً (+30 يوم من تاريخ الفاتورة)
-        $('#issue_date').on('change', function() {
-            const issueDate = new Date($(this).val());
-            if (!isNaN(issueDate.getTime())) {
-                const dueDate = new Date(issueDate);
-                dueDate.setDate(dueDate.getDate() + 30);
-                const dueDateString = dueDate.toISOString().split('T')[0];
-                $('#due_date').val(dueDateString);
-            }
-        });
-
-        // تحديث تاريخ الاستحقاق عند تحميل الصفحة
-        $('#issue_date').trigger('change');
+        // تحديث تاريخ الاستحقاق تلقائياً (+30 يوم من اليوم)
+        const today = new Date();
+        const dueDate = new Date(today);
+        dueDate.setDate(dueDate.getDate() + 30);
+        const dueDateString = dueDate.toISOString().split('T')[0];
+        $('#due_date').val(dueDateString);
 
         // التحقق من صحة النموذج قبل الإرسال
         $('#invoiceForm').on('submit', function(e) {
-            e.preventDefault(); // منع الإرسال التلقائي للنموذج
+            console.log('تم تقديم النموذج');
 
             // التحقق من وجود عنصر واحد على الأقل في الفاتورة
             if ($('.item-row:visible').length === 0) {
                 $('#noItemsAlert').show();
+                e.preventDefault();
+                return false;
+            }
+
+            // تحقق من اختيار نوع الفاتورة
+            if (!$('#type').val()) {
+                alert('الرجاء اختيار نوع الفاتورة');
+                e.preventDefault();
+                return false;
+            }
+
+            // تحقق من اختيار حساب المصدر
+            if (!$('#from_account_id').val()) {
+                alert('الرجاء اختيار حساب المصدر');
+                e.preventDefault();
+                return false;
+            }
+
+            // تحقق من اختيار حساب الوجهة
+            if (!$('#account_id').val()) {
+                alert('الرجاء اختيار حساب الوجهة');
+                e.preventDefault();
                 return false;
             }
 
             // التأكد من تعطيل قالب البند المخفي
             $('#item-row-template').find('input, select').prop('disabled', true);
-
-            // إضافة سجل في وحدة التحكم لتتبع الأخطاء
-            console.log('تقديم نموذج الفاتورة - بدء العملية');
 
             // إظهار مؤشر التحميل
             const submitBtn = $(this).find('button[type="submit"]');
@@ -428,10 +450,9 @@
             submitBtn.html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> جاري الحفظ...');
             submitBtn.prop('disabled', true);
 
-            // إرسال النموذج مباشرة بدون AJAX
-            this.submit();
+            console.log('سيتم إرسال النموذج الآن');
 
-            // إذا وصلنا إلى هنا، فقد تم إرسال النموذج بنجاح
+            // نسمح بإرسال النموذج
             return true;
         });
     });

@@ -53,143 +53,213 @@ class InvoiceController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
-            'type' => 'required|in:invoice,bill',
-            'account_id' => 'required|exists:accounts,id',
-            'issue_date' => 'required|date',
-            'due_date' => 'required|date|after_or_equal:issue_date',
-            'discount' => 'nullable|numeric|min:0',
-            'tax_rate' => 'nullable|numeric|min:0',
-            'shipping_fee' => 'nullable|numeric|min:0',
-            'notes' => 'nullable|string',
-            'items' => 'required|array|min:1',
-            'items.*.description' => 'required|string',
-            'items.*.quantity' => 'required|numeric|min:0.01',
-            'items.*.unit_price' => 'required|numeric|min:0',
-            'items.*.item_type' => 'required|string',
-            'car_id' => 'nullable|exists:cars,id',
-            'status' => 'required|in:draft,issued',
-        ]);
-
-        DB::beginTransaction();
+        \Log::info('بدء عملية حفظ الفاتورة', ['request_data' => $request->except(['_token'])]);
 
         try {
-            // Calculate invoice totals
-            $subtotal = 0;
-            foreach ($request->items as $item) {
-                $subtotal += ($item['quantity'] * $item['unit_price']);
-            }
-
-            $discount = $request->discount ?? 0;
-            $taxRate = $request->tax_rate ?? 0;
-            $taxAmount = ($taxRate / 100) * ($subtotal - $discount);
-            $shippingFee = $request->shipping_fee ?? 0;
-            $totalAmount = $subtotal - $discount + $taxAmount + $shippingFee;
-
-            // Create invoice number
-            $prefix = $request->type === 'invoice' ? 'INV' : 'BILL';
-            $invoiceNumber = $prefix . '-' . date('Ymd') . '-' . strtoupper(Str::random(4));
-
-            // Create the invoice
-            $invoice = Invoice::create([
-                'invoice_number' => $invoiceNumber,
-                'type' => $request->type,
-                'account_id' => $request->account_id,
-                'car_id' => $request->car_id,
-                'issue_date' => $request->issue_date,
-                'due_date' => $request->due_date,
-                'subtotal' => $subtotal,
-                'discount' => $discount,
-                'tax_rate' => $taxRate,
-                'tax_amount' => $taxAmount,
-                'shipping_fee' => $shippingFee,
-                'total_amount' => $totalAmount,
-                'paid_amount' => 0,
-                'balance' => $totalAmount,
-                'status' => $request->status,
-                'notes' => $request->notes,
-                'created_by' => Auth::id(),
+            $validated = $request->validate([
+                'type' => 'required|in:invoice,bill',
+                'from_account_id' => 'required|exists:accounts,id',
+                'account_id' => 'required|exists:accounts,id',
+                'due_date' => 'required|date',
+                'items' => 'required|array|min:1',
+                'items.*.description' => 'required|string',
+                'items.*.quantity' => 'required|numeric|min:1',
+                'items.*.unit_price' => 'required|numeric|min:0',
+                'status' => 'required|in:draft,issued',
             ]);
 
-            // Create invoice items
+            \Log::info('تم التحقق من صحة البيانات بنجاح');
+
+            // حساب المجموع الفرعي وإجمالي الفاتورة
+            $subtotal = 0;
             foreach ($request->items as $item) {
-                $itemTotal = $item['quantity'] * $item['unit_price'];
-
-                // Only assign car_id if the item_type is related to a car service
-                $carId = null;
-                if (isset($item['item_type']) && in_array($item['item_type'], ['car_service', 'car_part', 'car_repair']) && $request->car_id) {
-                    $carId = $request->car_id;
-                }
-
-                InvoiceItem::create([
-                    'invoice_id' => $invoice->id,
-                    'car_id' => $carId,
-                    'description' => $item['description'],
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $item['unit_price'],
-                    'total' => $itemTotal,
-                    'item_type' => isset($item['item_type']) ? $item['item_type'] : 'general',
-                ]);
+                $subtotal += $item['quantity'] * $item['unit_price'];
             }
 
-            // Create a transaction if selected and invoice is issued
-            if ($request->has('create_transaction') && $request->status === 'issued') {
-                $transactionNumber = 'TRX-' . strtoupper(Str::random(8));
+            $discount = $request->discount ?: 0;
+            $tax = $request->tax ?: 0;
+            $shipping_fee = $request->shipping_fee ?: 0;
+            $total_amount = $subtotal - $discount + $tax + $shipping_fee;
+            $balance = $total_amount; // في البداية، الرصيد يساوي إجمالي المبلغ
 
-                // Find intermediary account
-                $intermediaryAccount = Account::where('type', 'intermediary')->first();
+            // تحديد من/إلى حسابات وفقًا للنوع
+            $fromAccountId = $request->from_account_id;
+            $toAccountId = $request->account_id;
 
-                if (!$intermediaryAccount) {
-                    throw new \Exception('حساب وسيط غير موجود. يرجى إنشاء حساب وسيط قبل إنشاء فواتير مع معاملات تلقائية.');
-                }
+            \Log::info('معلومات الحسابات', [
+                'fromAccountId' => $fromAccountId,
+                'toAccountId' => $toAccountId
+            ]);
 
-                // Determine transaction direction based on invoice type
-                if ($request->type === 'invoice') {
-                    // Sales invoice: from customer to intermediary
-                    $fromAccountId = $request->account_id;
-                    $toAccountId = $intermediaryAccount->id;
-                } else {
-                    // Purchase invoice: from intermediary to supplier
-                    $fromAccountId = $intermediaryAccount->id;
-                    $toAccountId = $request->account_id;
-                }
-
-                // Create the transaction
-                $transaction = Transaction::create([
-                    'transaction_number' => $transactionNumber,
-                    'type' => $request->type === 'invoice' ? 'sale' : 'purchase',
-                    'from_account_id' => $fromAccountId,
-                    'to_account_id' => $toAccountId,
-                    'car_id' => $request->car_id,
-                    'amount' => $totalAmount,
-                    'commission_amount' => 0,
-                    'with_commission' => false,
-                    'reference_number' => $invoiceNumber,
-                    'transaction_date' => $request->issue_date,
-                    'description' => 'Transaction for ' . $invoiceNumber,
-                    'status' => 'completed',
-                    'created_by' => Auth::id(),
-                ]);
-
-                // Update account balances
-                $fromAccount = Account::findOrFail($fromAccountId);
-                $fromAccount->balance -= $totalAmount;
-                $fromAccount->save();
-
-                $toAccount = Account::findOrFail($toAccountId);
-                $toAccount->balance += $totalAmount;
-                $toAccount->save();
+            // تحديد اتجاه الفاتورة بالنسبة للحساب الوسيط
+            $direction = null;
+            if ($request->type == 'invoice') {
+                // فاتورة مبيعات (INV) - دخل للحساب الوسيط
+                $direction = 'positive';
+            } else if ($request->type == 'bill') {
+                // فاتورة مشتريات (BILL) - مصروف للحساب الوسيط
+                $direction = 'negative';
             }
 
-            DB::commit();
+            // توليد رقم الفاتورة
+            $prefix = $request->type == 'invoice' ? 'INV-' : 'BILL-';
+            $date = date('Ymd');
+            $random = strtoupper(substr(uniqid(), -4));
+            $invoice_number = $prefix . $date . '-' . $random;
 
-            return redirect()->route('invoices.show', $invoice)
-                ->with('success', ($request->type === 'invoice' ? 'فاتورة البيع' : 'فاتورة الشراء') . ' تم إنشاؤها بنجاح');
+            \Log::info('تفاصيل الفاتورة قبل الحفظ', [
+                'invoice_number' => $invoice_number,
+                'type' => $request->type,
+                'direction' => $direction,
+                'subtotal' => $subtotal,
+                'total_amount' => $total_amount
+            ]);
+
+            try {
+                DB::beginTransaction();
+
+                // إنشاء الفاتورة بالطريقة المباشرة
+                $invoice = new Invoice();
+                $invoice->invoice_number = $invoice_number;
+                $invoice->type = $request->type;
+                $invoice->account_id = $toAccountId;
+                $invoice->from_account_id = $fromAccountId;
+                $invoice->to_account_id = $toAccountId;
+                $invoice->direction = $direction;
+                $invoice->car_id = $request->car_id;
+                $invoice->issue_date = now();
+                $invoice->due_date = $request->due_date;
+                $invoice->subtotal = $subtotal;
+                $invoice->discount = $discount;
+                $invoice->tax_rate = 0; // حقل مطلوب في قاعدة البيانات
+                $invoice->tax_amount = $tax;
+                $invoice->shipping_fee = $shipping_fee;
+                $invoice->total_amount = $total_amount;
+                $invoice->paid_amount = 0;
+                $invoice->balance = $balance;
+                $invoice->status = $request->status;
+                $invoice->reference_number = $request->reference_number;
+                $invoice->notes = $request->notes;
+                $invoice->created_by = auth()->id();
+
+                \Log::info('محاولة حفظ الفاتورة');
+                $saved = $invoice->save();
+
+                if (!$saved) {
+                    \Log::error('فشل في حفظ الفاتورة بدون استثناء');
+                    throw new \Exception('فشل في حفظ الفاتورة بدون استثناء');
+                }
+
+                \Log::info('تم إنشاء الفاتورة بنجاح', ['invoice_id' => $invoice->id]);
+
+                // إضافة بنود الفاتورة
+                foreach ($request->items as $key => $item) {
+                    $invoiceItem = new InvoiceItem();
+                    $invoiceItem->invoice_id = $invoice->id;
+                    $invoiceItem->description = $item['description'];
+                    $invoiceItem->quantity = $item['quantity'];
+                    $invoiceItem->unit_price = $item['unit_price'];
+                    $invoiceItem->total = $item['quantity'] * $item['unit_price'];
+                    $invoiceItem->item_type = $item['item_type'] ?? 'standard';
+
+                    $invoiceItem->save();
+
+                    \Log::info('تم إنشاء بند الفاتورة', ['item_id' => $invoiceItem->id]);
+                }
+
+                // إنشاء معاملة مالية وتحديث أرصدة الحسابات إذا تم تحديد ذلك أو كانت الفاتورة مصدرة
+                if ($request->status === 'issued') {
+                    // الحصول على حساب الوسيط
+                    $intermediaryAccount = Account::where('type', 'intermediary')->first();
+                    if (!$intermediaryAccount) {
+                        throw new \Exception('لم يتم العثور على حساب الوسيط');
+                    }
+
+                    $transactionData = [
+                        'transaction_number' => 'TRX-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4)),
+                        'type' => $direction === 'positive' ? 'income' : 'expense',
+                        'from_account_id' => $fromAccountId,
+                        'to_account_id' => $toAccountId,
+                        'invoice_id' => $invoice->id,
+                        'amount' => $total_amount,
+                        'transaction_date' => now(),
+                        'description' => 'معاملة تلقائية من الفاتورة رقم ' . $invoice_number,
+                        'status' => 'completed',
+                        'created_by' => auth()->id()
+                    ];
+
+                    \Log::info('إنشاء معاملة مالية', $transactionData);
+                    $transaction = Transaction::create($transactionData);
+                    \Log::info('تم إنشاء المعاملة المالية', ['transaction_id' => $transaction->id]);
+
+                    // تحديث أرصدة الحسابات
+                    if ($request->type == 'invoice') {
+                        // فاتورة مبيعات: خصم من حساب العميل (المصدر)
+                        $fromAccount = Account::findOrFail($fromAccountId);
+                        $fromAccountOldBalance = $fromAccount->balance;
+                        $fromAccount->balance -= $total_amount;
+                        $fromAccount->save();
+
+                        \Log::info('تم تحديث رصيد حساب العميل', [
+                            'account_id' => $fromAccount->id,
+                            'account_name' => $fromAccount->name,
+                            'old_balance' => $fromAccountOldBalance,
+                            'new_balance' => $fromAccount->balance,
+                            'operation' => 'خصم',
+                            'amount' => $total_amount
+                        ]);
+                    } else {
+                        // فاتورة مشتريات: خصم من حساب الوسيط
+                        $intermediaryOldBalance = $intermediaryAccount->balance;
+                        $intermediaryAccount->balance -= $total_amount;
+                        $intermediaryAccount->save();
+
+                        \Log::info('تم تحديث رصيد حساب الوسيط', [
+                            'account_id' => $intermediaryAccount->id,
+                            'account_name' => $intermediaryAccount->name,
+                            'old_balance' => $intermediaryOldBalance,
+                            'new_balance' => $intermediaryAccount->balance,
+                            'operation' => 'خصم',
+                            'amount' => $total_amount
+                        ]);
+                    }
+                }
+
+                DB::commit();
+                \Log::info('تم حفظ الفاتورة والالتزام بالمعاملة بنجاح');
+
+                // إرسال الفاتورة بالبريد الإلكتروني إذا تم تحديد ذلك
+                if ($request->has('send_email') && $request->send_email && $request->status === 'issued') {
+                    // هنا يمكن إضافة كود إرسال البريد الإلكتروني
+                    \Log::info('طلب إرسال بريد إلكتروني للفاتورة', ['invoice_id' => $invoice->id]);
+                }
+
+                return redirect()->route('invoices.show', $invoice)
+                    ->with('success', 'تم إنشاء الفاتورة بنجاح');
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                \Log::error('خطأ أثناء حفظ الفاتورة', [
+                    'error_message' => $e->getMessage(),
+                    'error_trace' => $e->getTraceAsString()
+                ]);
+
+                return back()->withInput()
+                    ->with('error', 'حدث خطأ أثناء إنشاء الفاتورة: ' . $e->getMessage());
+            }
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            \Log::error('خطأ في التحقق من صحة البيانات', [
+                'errors' => $e->errors(),
+            ]);
+            throw $e;
         } catch (\Exception $e) {
-            DB::rollback();
-            \Log::error('Invoice creation error: ' . $e->getMessage());
-            \Log::error($e->getTraceAsString());
-            return back()->with('error', 'فشل في إنشاء الفاتورة: ' . $e->getMessage())->withInput();
+            \Log::error('خطأ عام أثناء معالجة طلب الفاتورة', [
+                'error_message' => $e->getMessage(),
+                'error_trace' => $e->getTraceAsString()
+            ]);
+
+            return back()->withInput()
+                ->with('error', 'حدث خطأ عام أثناء معالجة الفاتورة: ' . $e->getMessage());
         }
     }
 
@@ -407,25 +477,62 @@ class InvoiceController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        \Log::info('بدء تسجيل دفعة للفاتورة', [
+            'invoice_id' => $invoice->id,
+            'invoice_type' => $invoice->type,
+            'invoice_number' => $invoice->invoice_number,
+            'amount' => $request->amount,
+            'invoice_account_id' => $invoice->account_id,
+            'invoice_from_account_id' => $invoice->from_account_id,
+            'invoice_to_account_id' => $invoice->to_account_id
+        ]);
+
+        $invoice->load(['account', 'fromAccount', 'toAccount']);
+
         DB::beginTransaction();
 
         try {
             // Create a transaction for the payment
             $transactionNumber = 'PAY-' . strtoupper(Str::random(8));
 
+            // الحصول على حساب الوسيط
+            $intermediaryAccount = Account::where('type', 'intermediary')->first();
+            if (!$intermediaryAccount) {
+                throw new \Exception('لم يتم العثور على حساب الوسيط');
+            }
+
+            \Log::info('معلومات حساب الوسيط', [
+                'intermediary_id' => $intermediaryAccount->id,
+                'intermediary_name' => $intermediaryAccount->name
+            ]);
+
             // Determine accounts based on invoice type
             if ($invoice->type === 'invoice') {
-                // For customer invoices, money comes from customer to intermediary
-                $fromAccountId = $invoice->account_id;
-                $toAccountId = Account::where('type', 'intermediary')->first()->id;
+                // For customer invoices (INV), money comes from customer to intermediary
+                $fromAccountId = $invoice->from_account_id; // حساب العميل (from_account_id)
+                $toAccountId = $intermediaryAccount->id; // حساب الوسيط
+
+                \Log::info('دفعة فاتورة مبيعات (INV) - من العميل إلى الوسيط', [
+                    'from_account_id' => $fromAccountId,
+                    'from_account_name' => $invoice->fromAccount ? $invoice->fromAccount->name : 'غير محدد',
+                    'to_account_id' => $toAccountId,
+                    'to_account_name' => $intermediaryAccount->name
+                ]);
             } else {
-                // For bills, money goes from intermediary to shipping company
-                $fromAccountId = Account::where('type', 'intermediary')->first()->id;
-                $toAccountId = $invoice->account_id;
+                // For bills (BILL), money goes from intermediary to shipping company
+                $fromAccountId = $intermediaryAccount->id; // حساب الوسيط
+                $toAccountId = $invoice->to_account_id; // حساب شركة الشحن أو المورد (to_account_id)
+
+                \Log::info('دفعة فاتورة مشتريات (BILL) - من الوسيط إلى المورد', [
+                    'from_account_id' => $fromAccountId,
+                    'from_account_name' => $intermediaryAccount->name,
+                    'to_account_id' => $toAccountId,
+                    'to_account_name' => $invoice->toAccount ? $invoice->toAccount->name : 'غير محدد'
+                ]);
             }
 
             // Create the transaction
-            Transaction::create([
+            $transaction = Transaction::create([
                 'transaction_number' => $transactionNumber,
                 'type' => 'payment',
                 'from_account_id' => $fromAccountId,
@@ -435,22 +542,51 @@ class InvoiceController extends Controller
                 'with_commission' => false,
                 'reference_number' => $request->reference_number,
                 'transaction_date' => $request->payment_date,
-                'description' => 'Payment for ' . $invoice->invoice_number,
+                'description' => 'دفعة للفاتورة رقم ' . $invoice->invoice_number,
                 'status' => 'completed',
                 'created_by' => Auth::id(),
-                'invoice_id' => $invoice->id, // إضافة رقم الفاتورة للربط بين المعاملة والفاتورة
+                'invoice_id' => $invoice->id
             ]);
 
-            // Update account balances
+            \Log::info('تم إنشاء سجل المعاملة المالية', [
+                'transaction_id' => $transaction->id,
+                'transaction_number' => $transaction->transaction_number
+            ]);
+
+            // Update account balances - تحديث أرصدة الحسابات
             $fromAccount = Account::findOrFail($fromAccountId);
-            $fromAccount->balance -= $request->amount;
+            $fromAccountOldBalance = $fromAccount->balance;
+            $fromAccount->balance += $request->amount; // زيادة رصيد الحساب الدافع (تسوية الدين)
             $fromAccount->save();
 
+            \Log::info('تم تحديث رصيد حساب المصدر (الدافع)', [
+                'account_id' => $fromAccount->id,
+                'account_name' => $fromAccount->name,
+                'old_balance' => $fromAccountOldBalance,
+                'new_balance' => $fromAccount->balance,
+                'operation' => 'زيادة', 
+                'amount' => $request->amount
+            ]);
+
             $toAccount = Account::findOrFail($toAccountId);
-            $toAccount->balance += $request->amount;
+            $toAccountOldBalance = $toAccount->balance;
+            $toAccount->balance += $request->amount; // زيادة رصيد الحساب المستلم (يستلم المبلغ)
             $toAccount->save();
 
+            \Log::info('تم تحديث رصيد حساب الوجهة (المستلم)', [
+                'account_id' => $toAccount->id,
+                'account_name' => $toAccount->name,
+                'old_balance' => $toAccountOldBalance,
+                'new_balance' => $toAccount->balance,
+                'operation' => 'زيادة',
+                'amount' => $request->amount
+            ]);
+
             // Update invoice
+            $oldPaidAmount = $invoice->paid_amount;
+            $oldBalance = $invoice->balance;
+            $oldStatus = $invoice->status;
+
             $invoice->paid_amount += $request->amount;
             $invoice->balance = $invoice->total_amount - $invoice->paid_amount;
 
@@ -462,13 +598,29 @@ class InvoiceController extends Controller
 
             $invoice->save();
 
+            \Log::info('تم تحديث بيانات الفاتورة', [
+                'invoice_id' => $invoice->id,
+                'old_paid_amount' => $oldPaidAmount,
+                'new_paid_amount' => $invoice->paid_amount,
+                'old_balance' => $oldBalance,
+                'new_balance' => $invoice->balance,
+                'old_status' => $oldStatus,
+                'new_status' => $invoice->status
+            ]);
+
             DB::commit();
+            \Log::info('تم تسجيل الدفعة بنجاح');
 
             return redirect()->route('invoices.show', $invoice)
-                ->with('success', 'Payment recorded successfully');
+                ->with('success', 'تم تسجيل الدفعة بنجاح');
         } catch (\Exception $e) {
             DB::rollback();
-            return back()->with('error', 'Failed to record payment: ' . $e->getMessage())->withInput();
+            \Log::error('فشل في تسجيل الدفعة', [
+                'error_message' => $e->getMessage(),
+                'error_trace' => $e->getTraceAsString()
+            ]);
+
+            return back()->with('error', 'فشل في تسجيل الدفعة: ' . $e->getMessage())->withInput();
         }
     }
 

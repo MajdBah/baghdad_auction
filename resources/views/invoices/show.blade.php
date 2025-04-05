@@ -119,6 +119,65 @@
                         </div>
                     </div>
 
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <strong>حساب المصدر:</strong>
+                                <span>{{ $invoice->fromAccount->name ?? 'غير محدد' }}</span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <strong>حساب الوجهة:</strong>
+                                <span>{{ $invoice->account->name }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <strong>نوع الفاتورة:</strong>
+                                <span>
+                                    @if($invoice->type == 'invoice')
+                                        <span class="badge bg-success">فاتورة بيع (INV)</span>
+                                    @elseif($invoice->type == 'bill')
+                                        <span class="badge bg-warning">فاتورة شراء (BILL)</span>
+                                    @endif
+                                </span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <strong>الاتجاه:</strong>
+                                <span>
+                                    @if($invoice->direction == 'positive')
+                                        <span class="badge bg-success">دخل للحساب الوسيط</span>
+                                    @elseif($invoice->direction == 'negative')
+                                        <span class="badge bg-danger">مصروف للحساب الوسيط</span>
+                                    @else
+                                        <span class="badge bg-secondary">غير محدد</span>
+                                    @endif
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <strong>رقم الفاتورة:</strong>
+                                <span>{{ $invoice->invoice_number }}</span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <strong>الرقم المرجعي:</strong>
+                                <span>{{ $invoice->reference_number ?? 'غير متوفر' }}</span>
+                            </div>
+                        </div>
+                    </div>
+
                     @if($invoice->car)
                         <div class="mb-4">
                             <h6 class="fw-bold mb-3">معلومات السيارة</h6>

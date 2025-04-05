@@ -14,6 +14,9 @@ class Invoice extends Model
         'invoice_number',
         'type',
         'account_id',
+        'from_account_id',
+        'to_account_id',
+        'direction',
         'car_id',
         'issue_date',
         'due_date',
@@ -27,6 +30,7 @@ class Invoice extends Model
         'balance',
         'status',
         'notes',
+        'reference_number',
         'created_by'
     ];
 
@@ -52,6 +56,22 @@ class Invoice extends Model
     public function account()
     {
         return $this->belongsTo(Account::class);
+    }
+
+    /**
+     * Get the source account associated with the invoice
+     */
+    public function fromAccount()
+    {
+        return $this->belongsTo(Account::class, 'from_account_id');
+    }
+
+    /**
+     * Get the destination account associated with the invoice
+     */
+    public function toAccount()
+    {
+        return $this->belongsTo(Account::class, 'to_account_id');
     }
 
     /**
@@ -133,6 +153,24 @@ class Invoice extends Model
     public function isOverdue()
     {
         return $this->due_date < now() && !$this->isPaid();
+    }
+
+    /**
+     * Check if the invoice is positive for the broker account
+     * (من حساب العميل إلى حساب الوسيط)
+     */
+    public function isPositiveForBroker()
+    {
+        return $this->direction === 'positive';
+    }
+
+    /**
+     * Check if the invoice is negative for the broker account
+     * (من حساب الوسيط إلى حساب شركة الشحن)
+     */
+    public function isNegativeForBroker()
+    {
+        return $this->direction === 'negative';
     }
 
     /**
@@ -473,5 +511,109 @@ class Invoice extends Model
                 'paid_invoices' => []
             ];
         }
+    }
+
+    /**
+     * إنشاء فاتورة بين حسابين مع تحديد الاتجاه بالنسبة للوسيط
+     *
+     * @param array $data بيانات الفاتورة
+     * @param int|Account $fromAccount الحساب المصدر
+     * @param int|Account $toAccount الحساب الوجهة
+     * @param bool $isPositiveForBroker هل الفاتورة موجبة للوسيط؟
+     * @param User|null $user المستخدم الذي أنشأ الفاتورة
+     * @return Invoice الفاتورة التي تم إنشاؤها
+     */
+    public static function createBetweenAccounts(array $data, $fromAccount, $toAccount, bool $isPositiveForBroker, $user = null)
+    {
+        // تحويل حسابات المصدر والوجهة إلى معرفات إذا تم تمريرها كنماذج
+        $fromAccountId = $fromAccount instanceof Account ? $fromAccount->id : $fromAccount;
+        $toAccountId = $toAccount instanceof Account ? $toAccount->id : $toAccount;
+
+        // تحديد نوع الفاتورة بناءً على الاتجاه
+        $invoiceType = $isPositiveForBroker ? 'income' : 'expense';
+
+        // تجهيز البيانات الأساسية للفاتورة
+        $invoiceData = array_merge($data, [
+            'type' => $invoiceType,
+            'from_account_id' => $fromAccountId,
+            'to_account_id' => $toAccountId,
+            'direction' => $isPositiveForBroker ? 'positive' : 'negative',
+            'status' => 'issued',
+            'created_by' => $user ? $user->id : 1, // استخدام المستخدم الافتراضي إذا لم يتم تمرير مستخدم
+        ]);
+
+        // حساب الموازنة - لضمان عدم وجود قيم سالبة
+        if (!isset($invoiceData['paid_amount'])) {
+            $invoiceData['paid_amount'] = 0;
+        }
+
+        if (!isset($invoiceData['balance'])) {
+            $invoiceData['balance'] = $invoiceData['total_amount'];
+        }
+
+        \Log::info('إنشاء فاتورة بين حسابين', [
+            'from_account_id' => $fromAccountId,
+            'to_account_id' => $toAccountId,
+            'direction' => $isPositiveForBroker ? 'positive' : 'negative',
+            'type' => $invoiceType,
+        ]);
+
+        // إنشاء الفاتورة
+        return self::create($invoiceData);
+    }
+
+    /**
+     * الحصول على الفواتير المتعلقة بحساب الوسيط
+     *
+     * @param int|Account $brokerAccount حساب الوسيط
+     * @param string|null $direction اتجاه الفواتير (موجب/سالب/الكل)
+     * @return \Illuminate\Database\Eloquent\Collection مجموعة الفواتير
+     */
+    public static function getBrokerInvoices($brokerAccount, $direction = null)
+    {
+        $brokerAccountId = $brokerAccount instanceof Account ? $brokerAccount->id : $brokerAccount;
+
+        $query = self::where(function($q) use ($brokerAccountId) {
+            $q->where('from_account_id', $brokerAccountId)
+              ->orWhere('to_account_id', $brokerAccountId);
+        });
+
+        if ($direction === 'positive') {
+            $query->where('direction', 'positive');
+        } elseif ($direction === 'negative') {
+            $query->where('direction', 'negative');
+        }
+
+        return $query->orderBy('issue_date', 'desc')->get();
+    }
+
+    /**
+     * الحصول على رصيد حساب الوسيط من الفواتير (الإيرادات - المصروفات)
+     *
+     * @param int|Account $brokerAccount حساب الوسيط
+     * @return float رصيد الوسيط
+     */
+    public static function calculateBrokerBalance($brokerAccount)
+    {
+        $brokerAccountId = $brokerAccount instanceof Account ? $brokerAccount->id : $brokerAccount;
+
+        // حساب مجموع الفواتير الموجبة (من العميل إلى الوسيط)
+        $positiveTotal = self::where(function($q) use ($brokerAccountId) {
+                $q->where('from_account_id', $brokerAccountId)
+                  ->orWhere('to_account_id', $brokerAccountId);
+            })
+            ->where('direction', 'positive')
+            ->sum('total_amount');
+
+        // حساب مجموع الفواتير السالبة (من الوسيط إلى شركة الشحن)
+        $negativeTotal = self::where(function($q) use ($brokerAccountId) {
+                $q->where('from_account_id', $brokerAccountId)
+                  ->orWhere('to_account_id', $brokerAccountId);
+            })
+            ->where('direction', 'negative')
+            ->sum('total_amount');
+
+        // حساب الرصيد الإجمالي (الإيرادات - المصروفات)
+        return $positiveTotal - $negativeTotal;
     }
 }

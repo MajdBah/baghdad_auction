@@ -97,6 +97,15 @@ Route::middleware(['auth'])->group(function () {
     Route::get('reports/shipping-companies', [ReportController::class, 'shippingCompaniesPerformance'])->name('reports.shipping_companies');
     Route::get('reports/commission', [ReportController::class, 'commissionReport'])->name('reports.commission');
 
+    // Broker Invoice Routes
+    Route::prefix('broker')->name('broker.')->group(function() {
+        Route::get('/invoices', [App\Http\Controllers\BrokerInvoiceController::class, 'index'])->name('invoices.index');
+        Route::get('/invoices/create', [App\Http\Controllers\BrokerInvoiceController::class, 'create'])->name('invoices.create');
+        Route::post('/invoices', [App\Http\Controllers\BrokerInvoiceController::class, 'store'])->name('invoices.store');
+        Route::get('/invoices/{invoice}', [App\Http\Controllers\BrokerInvoiceController::class, 'show'])->name('invoices.show');
+        Route::get('/invoices/list/all', [App\Http\Controllers\BrokerInvoiceController::class, 'brokerInvoices'])->name('invoices.list');
+    });
+
     // Admin-only routes
     Route::middleware(['role:admin'])->group(function () {
         Route::resource('roles', RoleController::class);
