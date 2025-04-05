@@ -27,6 +27,11 @@
             </div>
             @endif
 
+            <div class="alert alert-info mb-3">
+                <i class="fas fa-info-circle me-1"></i>
+                ملاحظة: يمكنك الآن إجراء تحويلات بين الحسابات حتى لو أصبح رصيد الحساب المصدر بالسالب.
+            </div>
+
             <form action="{{ route('transfers.store') }}" method="POST">
                 @csrf
                 <div class="row mb-3">

@@ -8,12 +8,12 @@
         <h2 class="mb-0">تفاصيل الفاتورة #{{ $invoice->invoice_number }}</h2>
         <div>
             @if($invoice->status != 'cancelled' && $invoice->status != 'draft')
-                <a href="{{ route('invoices.print', $invoice) }}" class="btn btn-dark me-2" target="_blank">
+                <a href="{{ route('invoices.pdf', $invoice) }}" class="btn btn-dark me-2" target="_blank">
                     <i class="bi bi-printer"></i> طباعة الفاتورة
                 </a>
             @endif
             @if($invoice->status != 'cancelled' && $invoice->status != 'paid')
-                <a href="{{ route('invoices.payment', $invoice) }}" class="btn btn-success me-2">
+                <a href="{{ route('invoices.payment_form', $invoice) }}" class="btn btn-success me-2">
                     <i class="bi bi-cash"></i> تسجيل دفعة
                 </a>
             @endif
@@ -252,7 +252,7 @@
                     </ul>
                     <div class="text-center mt-3">
                         @if($invoice->status != 'cancelled' && $invoice->status != 'paid' && ($invoice->total_amount - $invoice->paid_amount) > 0)
-                            <a href="{{ route('invoices.payment', $invoice) }}" class="btn btn-success w-100">
+                            <a href="{{ route('invoices.payment_form', $invoice) }}" class="btn btn-success w-100">
                                 <i class="bi bi-cash"></i> تسجيل دفعة
                             </a>
                         @endif
@@ -335,12 +335,12 @@
                             </form>
                         @endif
                         @if($invoice->status != 'cancelled' && $invoice->status != 'draft')
-                            <a href="{{ route('invoices.print', $invoice) }}" class="btn btn-dark" target="_blank">
+                            <a href="{{ route('invoices.pdf', $invoice) }}" class="btn btn-dark" target="_blank">
                                 <i class="bi bi-printer"></i> طباعة الفاتورة
                             </a>
                             @if($invoice->account->email)
-                                <a href="{{ route('invoices.send', $invoice) }}" class="btn btn-info"
-                                    onclick="return confirm('هل تريد إرسال الفاتورة بالبريد الإلكتروني إلى {{ $invoice->account->email }}؟')">
+                                <a href="{{ route('invoices.email', $invoice) }}" class="btn btn-info"
+                                    onclick="return confirm('هل تريد إرسال هذه الفاتورة بالبريد الإلكتروني إلى {{ $invoice->account->email }}؟')">
                                     <i class="bi bi-envelope"></i> إرسال بالبريد الإلكتروني
                                 </a>
                             @endif

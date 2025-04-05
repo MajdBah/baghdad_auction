@@ -74,7 +74,7 @@
                             <span><strong>الموديل:</strong></span>
                             <span>{{ $car->model }}</span>
                         </li>
-                        <li class="list-group-item d-flex justify-content-between">
+                        <li class="list-group-item d-flex justify-content بين">
                             <span><strong>سنة الصنع:</strong></span>
                             <span>{{ $car->year }}</span>
                         </li>
@@ -247,9 +247,34 @@
                                                     <span><strong>تاريخ التسليم المتوقع:</strong></span>
                                                     <span>{{ $car->delivery_date ?? 'غير محدد' }}</span>
                                                 </li>
-                                                <li class="list-group-item d-flex justify-content-between">
+                                                <li class="list-group-item d-flex justify-content بين">
                                                     <span><strong>تاريخ التسليم الفعلي:</strong></span>
                                                     <span>{{ $car->actual_delivery_date ?? 'غير محدد' }}</span>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- إضافة قسم جديد للحساب بناء على المعاملات -->
+                                <div class="col-12 mt-4">
+                                    <div class="card h-100">
+                                        <div class="card-header bg-primary text-white">
+                                            <h6 class="mb-0">حساب التكاليف بناء على المعاملات المرتبطة</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <ul class="list-group list-group-flush">
+                                                <li class="list-group-item d-flex justify-content-between">
+                                                    <span><strong>سعر الشراء:</strong></span>
+                                                    <span class="fw-bold">{{ number_format($car->getTransactionPurchasePrice(), 2) }} $</span>
+                                                </li>
+                                                <li class="list-group-item d-flex justify-content بين">
+                                                    <span><strong>تكلفة الشحن:</strong></span>
+                                                    <span class="fw-bold">{{ number_format($car->getTransactionShippingCost(), 2) }} $</span>
+                                                </li>
+                                                <li class="list-group-item d-flex justify-content بين bg-light">
+                                                    <span><strong>إجمالي التكلفة:</strong></span>
+                                                    <span class="fw-bold">{{ number_format($car->getTransactionTotalCost(), 2) }} $</span>
                                                 </li>
                                             </ul>
                                         </div>
@@ -263,7 +288,7 @@
                 <!-- المعاملات المرتبطة -->
                 <div class="col-12 mb-4">
                     <div class="card shadow-sm">
-                        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <div class="card-header bg-light d-flex justify-content بين align-items-center">
                             <h5 class="mb-0">المعاملات المالية المرتبطة</h5>
                             <a href="{{ route('transactions.create', ['car_id' => $car->id]) }}" class="btn btn-sm btn-outline-primary">
                                 <i class="bi bi-plus-circle"></i> إضافة معاملة
@@ -349,7 +374,7 @@
                 <!-- الفواتير المرتبطة -->
                 <div class="col-12">
                     <div class="card shadow-sm">
-                        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <div class="card-header bg-light d-flex justify-content بين align-items-center">
                             <h5 class="mb-0">الفواتير المرتبطة</h5>
                             <a href="{{ route('invoices.create', ['car_id' => $car->id]) }}" class="btn btn-sm btn-outline-primary">
                                 <i class="bi bi-plus-circle"></i> إنشاء فاتورة

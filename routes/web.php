@@ -79,6 +79,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('invoices/{invoice}/payment', [InvoiceController::class, 'recordPayment'])->name('invoices.record_payment');
     Route::get('invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])->name('invoices.cancel');
     Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'generatePdf'])->name('invoices.pdf');
+    Route::get('invoices/{invoice}/print', [InvoiceController::class, 'printInvoice'])->name('invoices.print');
     Route::get('invoices/{invoice}/email', [InvoiceController::class, 'sendEmail'])->name('invoices.email');
     Route::get('invoices/{invoice}/items', [InvoiceController::class, 'showItems'])->name('invoices.items');
 

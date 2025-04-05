@@ -121,4 +121,32 @@ class Car extends Model
 
         return $this->selling_price - $this->getTotalCost();
     }
+
+    /**
+     * Calculate purchase price based on associated transactions
+     */
+    public function getTransactionPurchasePrice()
+    {
+        return $this->transactions()
+            ->whereIn('type', ['purchase', 'car_purchase'])
+            ->sum('amount');
+    }
+
+    /**
+     * Calculate shipping cost based on associated transactions
+     */
+    public function getTransactionShippingCost()
+    {
+        return $this->transactions()
+            ->whereIn('type', ['shipping', 'car_shipping'])
+            ->sum('amount');
+    }
+
+    /**
+     * Calculate total cost based on associated transactions
+     */
+    public function getTransactionTotalCost()
+    {
+        return $this->getTransactionPurchasePrice() + $this->getTransactionShippingCost();
+    }
 }

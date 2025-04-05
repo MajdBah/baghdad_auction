@@ -55,6 +55,14 @@ class Invoice extends Model
     }
 
     /**
+     * Get the car associated with the invoice
+     */
+    public function car()
+    {
+        return $this->belongsTo(Car::class);
+    }
+
+    /**
      * Get the user who created the invoice
      */
     public function createdBy()
@@ -68,6 +76,14 @@ class Invoice extends Model
     public function items()
     {
         return $this->hasMany(InvoiceItem::class);
+    }
+
+    /**
+     * Get the payments for this invoice
+     */
+    public function payments()
+    {
+        return $this->hasMany(Transaction::class, 'invoice_id');
     }
 
     /**

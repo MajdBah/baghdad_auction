@@ -21,6 +21,11 @@ class AccountController extends Controller
             $query->where('type', $type);
         }
 
+        // Filter accounts with negative balances
+        if ($request->has('negative')) {
+            $query->where('balance', '<', 0);
+        }
+
         $accounts = $query->orderBy('name')->paginate(10);
 
         return view('accounts.index', compact('accounts', 'type'));

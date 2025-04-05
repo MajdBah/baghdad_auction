@@ -59,7 +59,7 @@ class InvoiceController extends Controller
             'issue_date' => 'required|date',
             'due_date' => 'required|date|after_or_equal:issue_date',
             'discount' => 'nullable|numeric|min:0',
-            'tax' => 'nullable|numeric|min:0',
+            'tax_rate' => 'nullable|numeric|min:0',
             'shipping_fee' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
             'items' => 'required|array|min:1',
@@ -81,9 +81,10 @@ class InvoiceController extends Controller
             }
 
             $discount = $request->discount ?? 0;
-            $tax = $request->tax ?? 0;
+            $taxRate = $request->tax_rate ?? 0;
+            $taxAmount = ($taxRate / 100) * ($subtotal - $discount);
             $shippingFee = $request->shipping_fee ?? 0;
-            $totalAmount = $subtotal - $discount + $tax + $shippingFee;
+            $totalAmount = $subtotal - $discount + $taxAmount + $shippingFee;
 
             // Create invoice number
             $prefix = $request->type === 'invoice' ? 'INV' : 'BILL';
@@ -99,7 +100,8 @@ class InvoiceController extends Controller
                 'due_date' => $request->due_date,
                 'subtotal' => $subtotal,
                 'discount' => $discount,
-                'tax_amount' => $tax,
+                'tax_rate' => $taxRate,
+                'tax_amount' => $taxAmount,
                 'shipping_fee' => $shippingFee,
                 'total_amount' => $totalAmount,
                 'paid_amount' => 0,
@@ -514,5 +516,15 @@ class InvoiceController extends Controller
             'items_count' => $invoice->items->count(),
             'items' => $invoice->items
         ]);
+    }
+
+    /**
+     * Print the invoice in a printer-friendly format
+     */
+    public function printInvoice(Invoice $invoice)
+    {
+        $invoice->load(['account', 'items.car', 'createdBy']);
+
+        return view('invoices.print', compact('invoice'));
     }
 }

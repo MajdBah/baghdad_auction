@@ -20,6 +20,9 @@
                 <a href="{{ route('accounts.index', ['type' => 'shipping_company']) }}" class="btn btn-outline-secondary {{ $type === 'shipping_company' ? 'active' : '' }}">شركات الشحن</a>
                 <a href="{{ route('accounts.index', ['type' => 'intermediary']) }}" class="btn btn-outline-secondary {{ $type === 'intermediary' ? 'active' : '' }}">الوسطاء</a>
             </div>
+            <a href="{{ route('accounts.index', ['negative' => true]) }}" class="btn btn-danger ms-2 {{ request()->has('negative') ? 'active' : '' }}">
+                <i class="bi bi-dash-circle"></i> الحسابات بالسالب
+            </a>
         </div>
         <div class="card-body">
             <div class="table-responsive">

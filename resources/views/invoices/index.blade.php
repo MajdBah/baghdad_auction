@@ -137,7 +137,7 @@
                                             </a>
                                         @endif
                                         @if($invoice->status != 'cancelled' && $invoice->status != 'paid')
-                                            <a href="{{ route('invoices.payment', $invoice) }}" class="btn btn-sm btn-primary">
+                                            <a href="{{ route('invoices.payment_form', $invoice) }}" class="btn btn-sm btn-primary">
                                                 <i class="bi bi-cash"></i>
                                             </a>
                                         @endif

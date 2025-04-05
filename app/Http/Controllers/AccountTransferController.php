@@ -47,12 +47,8 @@ class AccountTransferController extends Controller
             $commissionAmount = $withCommission ? $amount * ($commissionPercentage / 100) : 0;
             $totalAmount = $amount + $commissionAmount;
 
-            // Check if from account has sufficient funds
-            if ($fromAccount->balance < $totalAmount) {
-                return back()->withInput()->withErrors(['amount' => 'Insufficient funds in source account.']);
-            }
-
-            // Generate transaction number
+            // The check for sufficient funds is removed to allow negative balances
+            // Create transaction
             $transactionNumber = 'TRF-' . strtoupper(Str::random(8));
 
             // Create transaction
@@ -73,6 +69,12 @@ class AccountTransferController extends Controller
 
             // Update account balances
             $fromAccount->balance -= $totalAmount;
+
+            // Log the negative balance if it occurs
+            if ($fromAccount->balance < 0) {
+                \Log::info("Account {$fromAccount->name} ({$fromAccount->account_number}) has a negative balance of {$fromAccount->balance} after transfer {$transactionNumber}");
+            }
+
             $fromAccount->save();
 
             $toAccount->balance += $amount; // Only the amount without commission
